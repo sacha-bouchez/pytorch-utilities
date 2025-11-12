@@ -4,23 +4,29 @@ from pytorcher.models.unet.unet_parts import *
 
 
 class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes, bilinear=False):
+    def __init__(self, n_channels, n_classes, bilinear=False, layer_type='standard'):
+        """
+        :param n_channels: Number of input channels
+        :param n_classes: Number of output channels
+        :param bilinear: Whether to use bilinear upsampling or transposed convolutions
+        :param layer_type: Type of convolutional layer to use ('standard' or 'separable'). Standard convolutions will always be used for upsampling layers, pre-concvolution layers, and the output layer.
+        """
         super(UNet, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.bilinear = bilinear
 
-        self.inc = (DoubleConv(n_channels, 64))
-        self.down1 = (Down(64, 128))
-        self.down2 = (Down(128, 256))
-        self.down3 = (Down(256, 512))
+        self.inc = (DoubleConv(n_channels, 64, layer_type='standard')) # Initial layer uses standard convolution
+        self.down1 = (Down(64, 128, layer_type=layer_type))
+        self.down2 = (Down(128, 256, layer_type=layer_type))
+        self.down3 = (Down(256, 512, layer_type=layer_type))
         factor = 2 if bilinear else 1
-        self.down4 = (Down(512, 1024 // factor))
-        self.up1 = (Up(1024, 512 // factor, bilinear))
-        self.up2 = (Up(512, 256 // factor, bilinear))
-        self.up3 = (Up(256, 128 // factor, bilinear))
-        self.up4 = (Up(128, 64, bilinear))
-        self.outc = (OutConv(64, n_classes))
+        self.down4 = (Down(512, 1024 // factor, layer_type=layer_type))
+        self.up1 = (Up(1024, 512 // factor, bilinear, layer_type=layer_type))
+        self.up2 = (Up(512, 256 // factor, bilinear, layer_type=layer_type))
+        self.up3 = (Up(256, 128 // factor, bilinear, layer_type=layer_type))
+        self.up4 = (Up(128, 64, bilinear, layer_type=layer_type))
+        self.outc = (OutConv(64, n_classes, layer_type='standard')) # Output layer uses standard convolution
 
     def forward(self, x):
         x1 = self.inc(x)
@@ -51,5 +57,7 @@ if __name__ == '__main__':
 
     from torchsummary import summary
 
-    unet = UNet(n_channels=1, n_classes=2, bilinear=True)
-    summary(unet, (1, 344, 252))
+    unet = UNet(n_channels=1, n_classes=2, bilinear=True, layer_type='separable')
+    # cpu_device = torch.device("cpu")
+    # unet.to(cpu_device)
+    summary(unet, (1, 256, 256), device="cpu")
