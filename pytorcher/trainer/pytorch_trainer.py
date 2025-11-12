@@ -1,5 +1,6 @@
 import torch
 import abc
+import mlflow
 
 class PytorchTrainer:
 
@@ -10,12 +11,15 @@ class PytorchTrainer:
         print(f'Using device: {self.device}')
 
         # create dataset / loader / model / optimizer / objective / metrics
-        self.loader = self.create_data_loader()
+        self.loader_train, self.loader_val = self.create_data_loader()
         self.model = self.create_model()
         self.signature = self.get_signature()
         self.optimizer = self.get_optimizer(learning_rate=self.learning_rate)
         self.objective = self.get_objective()
         self.metrics = self.get_metrics(metrics)
+
+        #
+        self.initial_epoch = 0
 
     @abc.abstractmethod
     def create_data_loader(self):
@@ -72,11 +76,11 @@ class PytorchTrainer:
             if metric.name == 'loss':
                 metric.update_state(None, loss)
             else:
-                metric.update_state(y_true, y_pred)
+                metric.update_state(y_true, y_pred)        
 
     def fit(self):
 
-        for epoch in range(self.n_epochs):
+        for epoch in range(self.initial_epoch, self.n_epochs):
             self.model.train()
             epoch_loss = 0.0
             for batch_idx, (inputs, targets) in enumerate(self.loader):
@@ -90,10 +94,7 @@ class PytorchTrainer:
 
                 self.update_metrics(loss.item(), targets, outputs)
 
-                print(f'Epoch [{epoch+1}/{self.n_epochs}], Step [{batch_idx+1}/{len(self.loader)}], '
-                      f'{metric.name}: {metric.result():.4f}' for metric in self.metrics)
-
-            print(f'End of Epoch {epoch+1}, metrics: ')
+            print(f'Epoch {epoch+1}, metrics: ')
             for metric in self.metrics:
                 print(f'{metric.name}: {metric.result():.4f}')
                 metric.reset_states()
