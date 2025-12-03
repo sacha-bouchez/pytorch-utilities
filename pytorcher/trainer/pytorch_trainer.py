@@ -73,6 +73,10 @@ class PytorchTrainer:
             out.append(getattr(__import__('pytorcher.metrics', fromlist=[metric_name]), 'Mean')(**{'name': 'loss'}))
         return out
 
+    def reset_metrics(self):
+        for metric in self.metrics:
+            metric.reset_states()
+
     def on_epoch_end(self, epoch):
         for metric in self.metrics:
             metric.reset_states()
