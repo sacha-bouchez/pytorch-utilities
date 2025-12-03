@@ -6,13 +6,13 @@ class PytorchTrainer:
 
     def __init__(self, metrics=[]):
 
-        # Create device for training (GPU if available)
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        print(f'Using device: {self.device}')
+        # device
+        self.device = self.get_device()
 
         # create dataset / loader / model / optimizer / objective / metrics
         self.loader_train, self.loader_val = self.create_data_loader()
         self.model = self.create_model()
+        self.model = self.model.to(self.device)
         self.signature = self.get_signature()
         self.optimizer = self.get_optimizer(learning_rate=self.learning_rate)
         self.objective = self.get_objective()
@@ -20,6 +20,12 @@ class PytorchTrainer:
 
         #
         self.initial_epoch = 0
+
+    def get_device(self):
+        # Create device for training (GPU if available)
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print(f'Using device: {self.device}')
+        return self.device
 
     @abc.abstractmethod
     def create_data_loader(self):
