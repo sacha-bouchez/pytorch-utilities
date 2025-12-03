@@ -83,7 +83,7 @@ class PytorchTrainer:
 
     def update_metrics(self, loss, y_true, y_pred):
         for metric in self.metrics:
-            if metric.name == 'loss':
+            if 'loss' in metric.name:
                 metric.update_state(None, loss)
             else:
                 metric.update_state(y_true, y_pred)        
