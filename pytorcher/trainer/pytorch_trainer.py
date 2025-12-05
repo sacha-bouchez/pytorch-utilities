@@ -1,6 +1,7 @@
 import torch
 import abc
 import mlflow
+import os
 
 class PytorchTrainer:
 
@@ -69,7 +70,7 @@ class PytorchTrainer:
             metric_name, metric_config = metric
             metric_class = getattr(__import__('pytorcher.metrics', fromlist=[metric_name]), metric_name)
             out.append(metric_class(**metric_config))
-        if 'loss' not in [m.name for m in out]:
+        if not any('loss' in m.name for m in out):
             out.append(getattr(__import__('pytorcher.metrics', fromlist=[metric_name]), 'Mean')(**{'name': 'loss'}))
         return out
 
@@ -86,7 +87,54 @@ class PytorchTrainer:
             if 'loss' in metric.name:
                 metric.update_state(None, loss)
             else:
-                metric.update_state(y_true, y_pred)        
+                metric.update_state(y_true, y_pred)
+
+    def load_model_and_optimizer(self, artifact_path):
+        """Properly load model and optimizer state from mlflow artifacts."""
+        #
+        try:
+            mlflow.artifacts.download_artifacts(artifact_path=artifact_path, dst_path="/tmp", run_id=mlflow.active_run().info.run_id)
+        except mlflow.exceptions.MlflowException:
+            print("No reboot model found in mlflow artifacts.")
+            return
+        #
+        local_model_path = f"/tmp/{artifact_path}/model.pth"
+        local_epoch_path = f"/tmp/{artifact_path}/epoch.txt"
+        local_optimizer_path = f"/tmp/{artifact_path}/optimizer.pth"
+        if os.path.exists(local_model_path) and os.path.exists(local_epoch_path) and os.path.exists(local_optimizer_path):
+            self.model.load_state_dict(torch.load(local_model_path))
+            with open(local_epoch_path, "r") as f:
+                self.initial_epoch = int(f.read()) + 1
+            self.optimizer.load_state_dict(torch.load(local_optimizer_path))
+            print(f"Rebooted model from epoch {self.initial_epoch}")
+        else:
+            print("No reboot model found in mlflow artifacts.")
+
+    def mlflow_log_model_as_artifact(self, epoch, artifact_path):
+
+        # log reboot model as artifact
+        os.makedirs(f"/tmp/{artifact_path}", exist_ok=True)
+        torch.save(self.model.state_dict(), f"/tmp/{artifact_path}/model.pth")
+        with open(f"/tmp/{artifact_path}/epoch.txt", "w") as f:
+            f.write(str(epoch))
+        mlflow.log_artifact(f"/tmp/{artifact_path}/model.pth", artifact_path=artifact_path)
+        mlflow.log_artifact(f"/tmp/{artifact_path}/epoch.txt", artifact_path=artifact_path)
+        # save optimizer state
+        torch.save(self.optimizer.state_dict(), f"/tmp/{artifact_path}/optimizer.pth")
+        mlflow.log_artifact(f"/tmp/{artifact_path}/optimizer.pth", artifact_path=artifact_path)
+
+    def mlflow_metric_monitoring(self, epoch, metric_name, current_metric_value):
+        """
+        Log model if target metric improved.
+        """
+
+        client = mlflow.client.MlflowClient()
+        best_value = client.get_metric_history(mlflow.active_run().info.run_id, metric_name)
+        if len(best_value) == 0 or current_metric_value > max([m.value for m in best_value]):
+            # log model as artifact
+            self.mlflow_log_model_as_artifact(epoch, artifact_path=f"best_model_{metric_name}")
+            print(f'New best {metric_name}={current_metric_value:.4f} at epoch {epoch+1}, model logged.')
+
 
     def fit(self):
 
