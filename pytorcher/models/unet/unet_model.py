@@ -1,15 +1,16 @@
 """ Full assembly of the parts to form the complete network """
 
 from pytorcher.models.unet.unet_parts import *
-
+from pytorcher.utils.processing import normalize_batch, rescale_batch
 
 class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes, bilinear=False, layer_type='standard'):
+    def __init__(self, n_channels, n_classes, bilinear=False, layer_type='standard', normalize_input=False):
         """
         :param n_channels: Number of input channels
         :param n_classes: Number of output channels
         :param bilinear: Whether to use bilinear upsampling or transposed convolutions
         :param layer_type: Type of convolutional layer to use ('standard' or 'separable'). Standard convolutions will always be used for upsampling layers, pre-concvolution layers, and the output layer.
+        :param normalize_input: Whether to normalize the input in the range [0, 1] before feeding it to the network. If set to True, output will be rescaled accordingly to match the input scale.
         """
         super(UNet, self).__init__()
         self.n_channels = n_channels
@@ -28,7 +29,11 @@ class UNet(nn.Module):
         self.up4 = (Up(128, 64, bilinear, layer_type=layer_type))
         self.outc = (OutConv(64, n_classes, layer_type='standard')) # Output layer uses standard convolution
 
+        self.normalize_input = normalize_input
+
     def forward(self, x):
+        if self.normalize_input:
+            x, x_mins, x_maxs = normalize_batch(x, return_min_max=True)
         x1 = self.inc(x)
         x2 = self.down1(x1)
         x3 = self.down2(x2)
@@ -39,6 +44,8 @@ class UNet(nn.Module):
         x = self.up3(x, x2)
         x = self.up4(x, x1)
         logits = self.outc(x)
+        if self.normalize_input:
+            logits = rescale_batch(logits, x_mins, x_maxs)
         return logits
 
     def use_checkpointing(self):
